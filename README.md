@@ -1,15 +1,8 @@
-# PayGate Platform — Bangladeshi Merchant MFS Gateway SaaS (v4.0)
+# PayGate Platform — Bangladeshi Merchant MFS Gateway (v4.0)
 
-PayGate enables Bangladeshi merchants to accept **bKash**, **Nagad**, **Rocket**, **Upay**, and **Cellfin** (IBBL) payments with **zero provider direct API integration**. Customers pay to a PayGate-managed wallet pool quoting an 8-character polynomial typo-checked reference. A dedicated Super Admin Android handset relays confirmation SMS messages over an IP-whitelisted endpoint, the atomic matching engine verifies the transaction, the merchant receives an HMAC-SHA256 signed webhook, and net funds are recorded in a double-entry ledger for automated BEFTN bank payout batching.
+PayGate enables Bangladeshi online merchants to accept **bKash**, **Nagad**, **Rocket**, **Upay**, and **Cellfin** (IBBL) payments with **zero provider direct API integration**. Customers transfer funds to a managed wallet pool quoting an 8-character polynomial typo-checked reference. A dedicated Super Admin Android handset relays confirmation SMS messages over an IP-whitelisted, cryptographically signed endpoint, the atomic matching engine verifies the transaction, the merchant receives an HMAC-SHA256 signed webhook, and net funds are recorded in a double-entry ledger for automated BEFTN bank payout batching.
 
-Built with **React 19**, **Vite 8**, **Tailwind CSS v4**, and the **Gate UI Design System**, structured as a decoupled monorepo where the pure rules are shared, tested code, and the only components touching money are the API and the database.
-
-### 📐 Framework Decision: Vite vs. Next.js
-**Vite SPA** was chosen over Next.js for PayGate for the following core reasons:
-1. **Zero Bundle Leakage**: Each application (`apps/checkout`, `apps/merchant`, `apps/admin`) is built as an independent bundle deployed to its own subdomain. This ensures admin operations and internal code can never reach a merchant's or customer's browser.
-2. **Edge Performance & PWA**: The checkout hosted page and popup shell are 100% static client-cacheable PWA assets. They cold-start under 1.2s without requiring a Node.js SSR runtime on edge proxies.
-3. **Strict Separation of Money Mutation**: Client applications are purely presentation layers communicating via typed `@paygate/contracts`. All money movements, ledger mutations, and database checks are authoritatively handled by the backend API and PostgreSQL.
-4. **Build & Transpilation Speed**: Vite + esbuild delivers near-instant dev server startup and deterministic, reproducible builds.
+Built with **React 19**, **Vite 8**, **Tailwind CSS v4**, and the **Gate UI Design System**, structured as a decoupled monorepo where pure rules are shared, tested code, and the only components touching money are the API and PostgreSQL database.
 
 ---
 
@@ -19,8 +12,8 @@ Built with **React 19**, **Vite 8**, **Tailwind CSS v4**, and the **Gate UI Desi
 paygate/
 ├── apps/
 │   ├── checkout/                 # pay.* hosted checkout page and paygate.js popup
-│   ├── merchant/                 # merchant.* merchant SaaS portal
-│   ├── admin/                    # admin.* operations console (SSO & MFA only)
+│   ├── merchant/                 # merchant.* merchant SaaS portal (no admin code bundled)
+│   ├── admin/                    # admin.* ops console (SSO & MFA only)
 │   └── api/                      # Fastify / Express service (/v1 REST, SMS ingest, outbox worker)
 ├── packages/
 │   ├── domain/                   # Pure TypeScript: branded paisa, transitions, reference checksums, SMS adapters
@@ -30,109 +23,56 @@ paygate/
 │   └── config/                   # Shared tsconfig, ESLint, and vitest presets
 ├── android/forwarder/            # Kotlin background SMS receiver & cryptographic signer
 ├── supabase/
-│   ├── migrations/               # PostgreSQL schema & atomic claim functions
-│   └── tests/                    # pgTAP ledger & claim test suite
+│   ├── migrations/               # PostgreSQL schema, quarantine table, & atomic claim function
+│   └── tests/                    # pgTAP ledger invariants & claim test suite
 ├── infra/                        # Deployment workflows & Grafana dashboards
 └── docs/                         # PRD, DESIGN, ADRs, incident runbooks
 ```
 
 ---
 
-## 🚀 Key Platform Features
+## 📐 Framework Decision: Vite vs. Next.js
 
-- **5 MFS & Digital Banking Providers**:
-  - Full support for **bKash**, **Nagad**, **Rocket**, **Upay**, and **Cellfin** (IBBL).
-  - Custom provider themes, official brand badges, and specialized regex parsers for each carrier format.
-- **Super Admin SMS Forwarder & IP Firewall**:
-  - Total extraction of forwarder simulation tools from the merchant portal into the Ops Admin console.
-  - Hardware telemetry: IMEI profile, Dual SIM slot assignment (bKash/Nagad on SIM 1, Rocket/Upay/Cellfin on SIM 2), battery ring, and latency ping test.
-  - **Zero-Trust IP Whitelisting**: Strict CIDR and IP checks (e.g., `103.145.74.0/24`, `192.168.1.105`, `127.0.0.1`); unauthorized forwarder calls are dropped with `403 Forbidden` and logged to the security audit trail.
-- **Automated BEFTN Payout Batching**:
-  - Individual merchant settlement requests are bundled into clearing batches (`pob_...`).
-  - Strict maker-checker workflow: Ops maker initiates the batch, independent compliance checker approves with 2FA, clearing references are stamped, and net bank transfers clear.
-- **Enhanced Customer Checkout**:
-  - **Dual Integration Modes**: Direct hosted redirect (`/pay/:id`) and modal popup overlay (`paygate.js`).
-  - **6 Gate UI States**: Initial instructions, active TrxID entry, loading state with live pulse animation, verified paid state, needs review state, and 15-minute typo lockout.
-  - **Bilingual Interface**: Seamless toggle between English and **বাংলা** (with +10% line-height compensation for Bengali glyphs).
-- **Progressive Web App (PWA)**:
-  - Installable across Chromium, Android, and iOS Safari with guided install prompts.
-  - Responsive collapsible sidebar ($240\text{px} \leftrightarrow 64\text{px}$) and touch-friendly mobile bottom navigation ($56\text{px}$ targets).
-  - Ambient offline connectivity status indicator.
+**Vite SPA** was selected over Next.js for PayGate for four fundamental reasons:
+1. **Zero Bundle Leakage**: Each application (`apps/checkout`, `apps/merchant`, `apps/admin`) is built as an independent bundle deployed to its own subdomain. This ensures admin operations and internal code can never reach a merchant's or customer's browser.
+2. **Edge Performance & PWA**: The checkout hosted page and popup shell are 100% static client-cacheable PWA assets. They cold-start under 1.2s without requiring a Node.js SSR runtime on edge proxies.
+3. **Strict Separation of Money Mutation**: Client applications are purely presentation layers communicating via typed `@paygate/contracts`. All money movements, ledger mutations, and database checks are authoritatively handled by the backend API and PostgreSQL.
+4. **Build & Transpilation Speed**: Vite + esbuild delivers near-instant dev server startup and deterministic, reproducible builds.
 
 ---
 
-## 📁 Project Structure
+## 🌐 Subdomain Routing & Portals
 
-```
-├── public/                       # Static PWA assets & icons
-│   ├── icon.svg                  # Brand SVG vector
-│   ├── pwa-192x192.png           # Android launcher icon
-│   ├── pwa-512x512.png           # High-DPI splash icon
-│   ├── pwa-maskable-512x512.png  # Adaptive maskable icon
-│   └── apple-touch-icon.png      # iOS Safari home screen icon
-├── src/
-│   ├── components/
-│   │   ├── admin/                # Ops Admin Portal & Super Admin Device
-│   │   │   ├── AdminDashboardLayout.tsx   # Ops Admin master shell & sub-navigation
-│   │   │   ├── SuperAdminDeviceTab.tsx    # Forwarder handset, IP firewall & SMS terminal
-│   │   │   ├── WalletPoolTab.tsx          # MFS wallet pool liquidity & auto-drain
-│   │   │   ├── ReviewQueueTab.tsx         # Split-screen dispute & discrepancy resolution
-│   │   │   ├── PayoutApprovalsTab.tsx     # BEFTN batching & maker-checker clearing
-│   │   │   └── AuditLogTab.tsx            # Immutable compliance audit log
-│   │   ├── api/                  # API Sandbox & Documentation
-│   │   │   └── ApiSandboxLayout.tsx       # Live REST runner, curl generator, playground
-│   │   ├── auth/                 # Sign In & Merchant KYB Registration pages
-│   │   ├── gate-ui/              # Shared Gate UI design system components
-│   │   │   ├── GateButton.tsx    # Standard button (primary, secondary, ghost, danger)
-│   │   │   ├── GateInput.tsx     # 44px input with inline validation
-│   │   │   ├── StatusChip.tsx    # Status chip with dot and label
-│   │   │   ├── ReferenceChip.tsx # Mono chip with one-tap copy
-│   │   │   ├── ProviderBadge.tsx # Official MFS provider brand dots (bKash/Nagad/Rocket/Upay/Cellfin)
-│   │   │   ├── StatCard.tsx      # Tabular metric cards
-│   │   │   ├── CommandPalette.tsx# ⌘K global fuzzy search modal
-│   │   │   └── PaymentDrawer.tsx # Detailed payment inspection drawer
-│   │   ├── layout/               # Shell layout components
-│   │   │   ├── AmbientDomainSwitcher.tsx  # Dev domain switcher bar (merchant/admin/api)
-│   │   │   ├── CollapsibleSidebar.tsx     # Desktop collapsible sidebar
-│   │   │   ├── TopNavbar.tsx              # Universal top navigation bar
-│   │   │   └── MobileBottomNav.tsx        # Mobile bottom navigation bar
-│   │   ├── merchant/             # Merchant SaaS tabs (Overview, Payments, Plans, Settlements, Developers, Settings)
-│   │   ├── pay/                  # HostedPayPage & PayGatePopupModal (6 checkout states)
-│   │   └── pwa/                  # PWAInstallButton & OfflineIndicator
-│   ├── context/
-│   │   └── PayGateContext.tsx    # State store, matching engine, IP firewall, BEFTN batching, ledger
-│   ├── router/
-│   │   └── index.tsx             # Multi-domain & path router with domain switcher state
-│   ├── types/
-│   │   └── index.ts              # Domain types (Payment, Merchant, Device, PayoutBatch, ParsedSmsResult)
-│   ├── utils/
-│   │   ├── matchingEngine.ts     # Atomic transaction claim & conflict resolver
-│   │   ├── reference.ts          # 8-char reference generator & polynomial check validator
-│   │   ├── smsParser.ts          # bKash, Nagad, Rocket, Upay, and Cellfin SMS regex parsers
-│   │   └── webhook.ts            # Web Crypto HMAC-SHA256 signature generator & verifier
-│   ├── tokens.json               # Gate UI design tokens
-│   ├── App.tsx                   # Master application router & layout orchestrator
-│   └── index.css                 # CSS variables & Tailwind v4 setup
-├── server.ts                     # Production full-stack Express API backend (/v1/*) mounting Vite
-├── supabase/migrations/          # PostgreSQL schema migrations (v3.0 core, v4.0 Option A Verifier, Device Signing & Atomic Claims)
-├── DESIGN.md                     # Gate UI Design System specification
-├── PRD.md                        # Product Requirements Document v4.0
-└── vite.config.ts                # Vite configuration with VitePWA plugin
-```
+| Subdomain | App Directory | Port / Route | Description |
+| :--- | :--- | :--- | :--- |
+| **`pay.example.com`** | `apps/checkout` | `/pay/:id` | **Customer Checkout**: Hosted pay page and `paygate.js` popup modal. Renders 6 Gate UI states, provider selection, one-tap copy, and TrxID confirmation. |
+| **`merchant.example.com`** | `apps/merchant` | `/` | **Merchant Portal**: GMV overview, real-time payments list, server-authoritative plans (in paisa), double-entry ledger, webhook logs, and KYB settings. |
+| **`admin.example.com`** | `apps/admin` | `/admin` | **Operations Console**: Super Admin forwarder handset profile, IP firewall, wallet pool auto-drain, review queue, BEFTN payout batching, and tamper-evident audit log. |
+| **`api.example.com`** | `apps/api` | `/v1/*` | **Backend API & Sandbox**: REST endpoints, cryptographic signature verification, SMS ingest webhook, and interactive API sandbox. |
 
 ---
 
-## 🛠️ Getting Started
+## 🚀 Pure Domain Logic (`@paygate/domain`)
+
+- **Branded Integer-Paisa Arithmetic**: Currency values use the branded type `Paisa = number & { readonly __brand: unique symbol }`. Floating-point numbers are strictly banned from money calculations.
+- **Explicit Payment State Machine**: Non-reversible state transitions (`created` → `awaiting_payment` → `confirming` → `paid` | `needs_review` | `expired`). Terminal states (`paid`, `expired`, `cancelled`) are immutable.
+- **Polynomial Reference Generator**: 8-character charset (`23456789ABCDEFGHJKMNPQRSTUVWXYZ`) with prime-weighted modulo-31 checksum. Excludes look-alikes (`0/O`, `1/I/L`).
+- **Provider Adapters**: Explicit regex matching and parsing for **bKash**, **Nagad**, **Rocket**, **Upay**, and **Cellfin**. Unparseable messages are moved to the `quarantined_sms` table instead of being dropped.
+- **Cryptographic Security**: HMAC-SHA256 device signing with monotonic sequence counter for replay defense, and SHA-256 hash-chained audit logging.
+
+---
+
+## 🛠️ Getting Started & CLI Scripts
 
 ### 1. Prerequisites
 - **Node.js**: `v20.0.0` or higher
-- **npm** or **bun**
+- **npm** or **pnpm**
 
 ### 2. Installation
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/paygate-platform.git
-cd paygate-platform
+git clone https://github.com/your-org/paygate.git
+cd paygate
 
 # Install dependencies
 npm install
@@ -140,24 +80,38 @@ npm install
 
 ### 3. Development Server
 ```bash
-# Start Vite dev server on http://localhost:3000
+# Starts full-stack server (Express backend + Vite middleware on http://localhost:3000)
 npm run dev
 ```
 
-### 4. Code Quality & Type Checking
+### 4. Running Domain Tests
 ```bash
-# Type check TypeScript codebase
-npm run lint
+# Executes 45 domain unit tests covering math, transitions, references, and golden fixtures
+npm test
+```
 
-# Production build with PWA service worker generation
+### 5. Type Checking & Code Quality
+```bash
+# Runs TypeScript compiler in strict mode (zero errors required)
+npm run lint
+```
+
+### 6. Production Builds
+```bash
+# Build master bundle
 npm run build
+
+# Build individual standalone apps
+npm run build:checkout   # Builds apps/checkout/dist
+npm run build:merchant   # Builds apps/merchant/dist
+npm run build:admin      # Builds apps/admin/dist
 ```
 
 ---
 
 ## 🔌 API & Integration Guide
 
-### Creating a Payment
+### Creating a Payment Session
 ```bash
 curl -X POST https://api.example.com/v1/payments \
   -H "Authorization: Bearer sk_live_8e1d2c3b4a5f607182934" \
@@ -166,97 +120,94 @@ curl -X POST https://api.example.com/v1/payments \
   -d '{
     "plan_id": "plan_pro_monthly",
     "order_id": "ORD-94812",
-    "provider": "upay",
+    "provider": "bkash",
     "callback_url": "https://api.yourdomain.com/webhooks/paygate",
     "success_url": "https://yourdomain.com/checkout/success"
   }'
 ```
 
-**Response**:
-```json
-{
-  "id": "pay_01ha9x201",
-  "order_id": "ORD-94812",
-  "amount_paisa": 120000,
-  "currency": "BDT",
-  "reference": "K7M4X2QH",
-  "provider": "upay",
-  "wallet": {
-    "provider": "upay",
-    "number": "01912-345678",
-    "holder_name": "PayGate Pool Upay 1"
-  },
-  "pay_url": "https://pay.example.com/pay/pay_01ha9x201",
-  "expires_at": "2026-10-13T16:00:00Z"
-}
+### Embeddable Popup Checkout Modal (`paygate.js`)
+```html
+<!-- Include public SDK script on your checkout page -->
+<script src="https://pay.example.com/paygate.js"></script>
+
+<button id="pay-btn">Pay with MFS (bKash / Nagad / Rocket)</button>
+
+<script>
+  document.getElementById('pay-btn').addEventListener('click', async () => {
+    // 1. Create payment session from your server
+    const res = await fetch('/api/create-payment', { method: 'POST' });
+    const { id } = await res.json();
+
+    // 2. Open interactive popup modal overlay
+    PayGate.open({
+      paymentId: id,
+      onSuccess: function(data) {
+        console.log('Payment verified and paid atomically!', data);
+        window.location.href = '/order/confirmation';
+      },
+      onClose: function() {
+        console.log('Customer dismissed checkout modal');
+      }
+    });
+  });
+</script>
 ```
 
-### Ingesting SMS from Forwarder Handset (Super Admin Device)
+### Forwarder Handset Ingest with Cryptographic Signature
 ```bash
 curl -X POST https://api.example.com/v1/sms/webhook \
-  -H "X-Device-Token: dev_sec_superadmin_9921" \
-  -H "X-Forwarded-For: 103.145.74.12" \
+  -H "X-Device-Id: dev_superadmin_01" \
+  -H "X-Device-Seq: 101" \
+  -H "X-Device-Timestamp: 1791892800" \
+  -H "X-Device-Signature: 8f9a2b...hex_sha256" \
   -H "Content-Type: application/json" \
   -d '{
-    "sender": "Upay",
-    "raw_sms": "Received Tk 1200.00 from 01812345678. Trx ID 9K2LMN84. Ref: K7M4X2QH. Fee Tk 0.00. Balance Tk 14500.00. 13/10/2026 15:30",
-    "sim_slot": 2
+    "sender": "bKash",
+    "raw_sms": "You have received Tk 1,200.00 from 01712750278. Fee Tk 0.00. Balance Tk 14,500.00. TrxID DJC9SZQV0J and Ref K7M4X2QH at 13/10/2026 15:24.",
+    "sim_slot": 1
   }'
 ```
 
-*(Note: If `X-Forwarded-For` is not in the Super Admin CIDR whitelist, the endpoint immediately returns `403 Forbidden` and logs an unauthorized intrusion attempt).*
-
-### Verifying Webhooks (Node.js / Express)
+### Webhook Verification (Node.js)
 ```javascript
 import crypto from 'crypto';
 
 app.post('/webhooks/paygate', express.raw({ type: 'application/json' }), (req, res) => {
-  const signatureHeader = req.headers['paygate-signature']; // t=17918...,v1=hex...
+  const signatureHeader = req.headers['paygate-signature']; // t=<unix>,v1=<hex>
   const [tPart, v1Part] = signatureHeader.split(',');
   const timestamp = tPart.split('=')[1];
-  const receivedHash = v1Part.split('=')[1];
+  const signature = v1Part.split('=')[1];
 
-  // Prevent replay attacks (> 5 minutes old)
+  // Replay prevention: reject timestamps older than 5 minutes
   if (Math.abs(Math.floor(Date.now() / 1000) - parseInt(timestamp, 10)) > 300) {
     return res.status(401).send('Timestamp expired');
   }
 
   const payload = timestamp + '.' + req.body.toString();
-  const expectedHash = crypto.createHmac('sha256', process.env.PAYGATE_WEBHOOK_SECRET)
-                             .update(payload)
-                             .digest('hex');
+  const expected = crypto.createHmac('sha256', process.env.PAYGATE_WEBHOOK_SECRET)
+                         .update(payload)
+                         .digest('hex');
 
-  if (expectedHash !== receivedHash) {
-    return res.status(401).send('Invalid signature');
+  if (crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
+    const event = JSON.parse(req.body.toString());
+    if (event.event === 'payment.paid') {
+      console.log(`Payment settled for Order ${event.order_id}: Tk ${event.amount_paisa / 100}`);
+    }
+    return res.json({ received: true });
   }
 
-  const event = JSON.parse(req.body.toString());
-  if (event.event === 'payment.paid') {
-    console.log(`Payment confirmed for Order: ${event.order_id}, Net: Tk ${event.net_paisa / 100}`);
-    // Fulfill customer order in your database
-  }
-
-  res.json({ received: true });
+  res.status(401).send('Signature mismatch');
 });
 ```
 
 ---
 
-## 🧪 Interactive Testing Lab
+## 🔒 Service Worker & Cache Isolation
 
-1. **Ambient Domain Switcher**: Use the top domain switcher bar to test across `merchant.example.com`, `admin.example.com`, and `api.example.com`.
-2. **Super Admin Device & Firewall Test**:
-   - Switch to **Ops Admin** → **Forwarder Device**.
-   - Test the Ping Device latency diagnostic.
-   - Inject a test SMS using the pre-configured templates (bKash, Nagad, Rocket, Upay, Cellfin).
-   - Test IP firewall blocking by setting an unauthorized client IP (e.g. `198.51.100.4`) and observe the 403 Forbidden rejection and audit log entry.
-3. **Automated BEFTN Batching**:
-   - Navigate to **Ops Admin** → **Payout Approvals**.
-   - Create a BEFTN clearing batch from pending payouts and verify the maker-checker authorization flow.
-4. **API Sandbox**:
-   - Switch to **API Backend** to run live interactive requests against `/v1/payments`, `/v1/sms/webhook`, and `/v1/payouts`.
-5. **Customer Checkout Flow**:
-   - Click **"Test Checkout"** in the top navigation bar to test the 6 Gate UI states in both English and Bengali.
+- **PWA Scope**: Caches only static assets required to render the customer checkout shell.
+- **Exclusion Rules**: Workbox `navigateFallbackDenylist` and runtime caching strictly exclude all authenticated merchant pages (`/merchant/*`, `/settings/*`, `/developers/*`), admin routes (`/admin/*`), and API routes (`/v1/*`, `/api/*`).
+- **Network Enforcement**: API responses are strictly handled as `NetworkOnly` and are never written to disk or service worker cache.
 
 ---
 
